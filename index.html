@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+© 2025 heeditz. all rights reserved.
+this repository and its contents are proprietary. 
+you may not copy, modify, distribute, or use any part of this project 
+without explicit written permission from the owner.
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Effects Processor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .upload-area:hover {
+            background: rgba(102, 126, 234, 0.1);
+            border-color: #764ba2;
+        }
+
+        .upload-area.dragover {
+            background: rgba(102, 126, 234, 0.2);
+            border-color: #764ba2;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+
+        .controls {
+            display: none;
+        }
+
+        .controls.active {
+            display: block;
+        }
+
+        .control-group {
+            margin-bottom: 25px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+        }
+
+        .control-group input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: none;
+        }
+
+        .value-display {
+            display: inline-block;
+            float: right;
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .playback-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        button {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .play-btn {
+            background: #667eea;
+            color: white;
+        }
+
+        .play-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .stop-btn {
+            background: #764ba2;
+            color: white;
+        }
+
+        .stop-btn:hover {
+            background: #653a8a;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(118, 75, 162, 0.4);
+        }
+
+        .download-btn {
+            background: #10b981;
+            color: white;
+            margin-top: 10px;
+        }
+
+        .download-btn:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
+        }
+
+        .file-name {
+            text-align: center;
+            color: #667eea;
+            font-weight: 600;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        button:disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid #e5e7eb;
+            color: #6b7280;
+            font-size: 0.85em;
+            line-height: 1.6;
+        }
+
+        .footer strong {
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Audio Effects Processor</h1>
+        
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">🎧</div>
+            <p><strong>Click to upload</strong> or drag & drop</p>
+            <p style="font-size: 0.9em; color: #666; margin-top: 5px;">MP3, WAV, OGG supported</p>
+            <input type="file" id="fileInput" accept="audio/*">
+        </div>
+
+        <div class="controls" id="controls">
+            <div class="file-name" id="fileName"></div>
+
+            <div class="control-group">
+                <label>
+                    Speed
+                    <span class="value-display" id="speedValue">1.0x</span>
+                </label>
+                <input type="range" id="speed" min="0.25" max="2" step="0.05" value="1">
+            </div>
+
+            <div class="control-group">
+                <label>
+                    Pitch
+                    <span class="value-display" id="pitchValue">0</span>
+                </label>
+                <input type="range" id="pitch" min="-12" max="12" step="1" value="0">
+            </div>
+
+            <div class="control-group">
+                <label>
+                    Bass Boost
+                    <span class="value-display" id="bassValue">0 dB</span>
+                </label>
+                <input type="range" id="bass" min="0" max="20" step="1" value="0">
+            </div>
+
+            <div class="control-group">
+                <label>
+                    Reverb
+                    <span class="value-display" id="reverbValue">0%</span>
+                </label>
+                <input type="range" id="reverb" min="0" max="100" step="1" value="0">
+            </div>
+
+            <div class="control-group">
+                <label>
+                    Echo
+                    <span class="value-display" id="echoValue">0%</span>
+                </label>
+                <input type="range" id="echo" min="0" max="100" step="1" value="0">
+            </div>
+
+            <div class="control-group">
+                <label>
+                    Volume
+                    <span class="value-display" id="volumeValue">100%</span>
+                </label>
+                <input type="range" id="volume" min="0" max="200" step="1" value="100">
+            </div>
+
+            <div class="playback-controls">
+                <button class="play-btn" id="playBtn">▶️ Play</button>
+                <button class="stop-btn" id="stopBtn">⏹️ Stop</button>
+            </div>
+
+            <button class="download-btn" id="downloadBtn">⬇️ Download Processed Audio</button>
+
+            <div class="footer">
+                <strong>© 2025 heeditz. All rights reserved.</strong><br>
+                This repository and its contents are proprietary.<br>
+                You may not copy, modify, distribute, or use any part of this project<br>
+                without explicit written permission from the owner.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let audioContext;
+        let sourceNode;
+        let audioBuffer;
+        let isPlaying = false;
+        let gainNode, bassNode, convolverNode, delayNode, feedbackNode;
+        let uploadedFile;
+
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const controls = document.getElementById('controls');
+        const fileName = document.getElementById('fileName');
+        const playBtn = document.getElementById('playBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        // Sliders
+        const speedSlider = document.getElementById('speed');
+        const pitchSlider = document.getElementById('pitch');
+        const bassSlider = document.getElementById('bass');
+        const reverbSlider = document.getElementById('reverb');
+        const echoSlider = document.getElementById('echo');
+        const volumeSlider = document.getElementById('volume');
+
+        // Upload area interactions
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('audio/')) {
+                handleFile(file);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) handleFile(file);
+        });
+
+        async function handleFile(file) {
+            uploadedFile = file;
+            fileName.textContent = `📁 ${file.name}`;
+            
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            const arrayBuffer = await file.arrayBuffer();
+            audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            
+            controls.classList.add('active');
+        }
+
+        // Create reverb impulse response
+        function createReverbImpulse(duration, decay) {
+            const rate = audioContext.sampleRate;
+            const length = rate * duration;
+            const impulse = audioContext.createBuffer(2, length, rate);
+            const left = impulse.getChannelData(0);
+            const right = impulse.getChannelData(1);
+
+            for (let i = 0; i < length; i++) {
+                left[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+                right[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+            }
+            return impulse;
+        }
+
+        function playAudio() {
+            stopAudio(); // Always stop first to clean up
+
+            sourceNode = audioContext.createBufferSource();
+            sourceNode.buffer = audioBuffer;
+
+            // Speed control
+            sourceNode.playbackRate.value = parseFloat(speedSlider.value);
+
+            // Pitch shift (detune in cents)
+            sourceNode.detune.value = parseInt(pitchSlider.value) * 100;
+
+            // Bass boost (low-shelf filter)
+            bassNode = audioContext.createBiquadFilter();
+            bassNode.type = 'lowshelf';
+            bassNode.frequency.value = 200;
+            bassNode.gain.value = parseFloat(bassSlider.value);
+
+            // Reverb
+            convolverNode = audioContext.createConvolver();
+            const reverbAmount = parseFloat(reverbSlider.value) / 100;
+            convolverNode.buffer = createReverbImpulse(2, 2);
+
+            const reverbGain = audioContext.createGain();
+            reverbGain.gain.value = reverbAmount;
+
+            const dryGain = audioContext.createGain();
+            dryGain.gain.value = 1 - reverbAmount * 0.5;
+
+            // Echo/Delay
+            delayNode = audioContext.createDelay();
+            delayNode.delayTime.value = 0.3;
+            
+            feedbackNode = audioContext.createGain();
+            feedbackNode.gain.value = parseFloat(echoSlider.value) / 150;
+
+            const echoGain = audioContext.createGain();
+            echoGain.gain.value = parseFloat(echoSlider.value) / 100;
+
+            // Volume
+            gainNode = audioContext.createGain();
+            gainNode.gain.value = parseFloat(volumeSlider.value) / 100;
+
+            // Connect nodes
+            sourceNode.connect(bassNode);
+            
+            // Dry signal
+            bassNode.connect(dryGain);
+            dryGain.connect(gainNode);
+
+            // Reverb signal
+            bassNode.connect(convolverNode);
+            convolverNode.connect(reverbGain);
+            reverbGain.connect(gainNode);
+
+            // Echo signal
+            bassNode.connect(delayNode);
+            delayNode.connect(feedbackNode);
+            feedbackNode.connect(delayNode);
+            delayNode.connect(echoGain);
+            echoGain.connect(gainNode);
+
+            gainNode.connect(audioContext.destination);
+
+            sourceNode.start();
+            isPlaying = true;
+            playBtn.textContent = '⏸️ Pause';
+
+            sourceNode.onended = () => {
+                isPlaying = false;
+                playBtn.textContent = '▶️ Play';
+            };
+        }
+
+        function stopAudio() {
+            if (sourceNode) {
+                sourceNode.stop();
+                sourceNode.disconnect();
+                isPlaying = false;
+                playBtn.textContent = '▶️ Play';
+            }
+        }
+
+        playBtn.addEventListener('click', () => {
+            if (audioBuffer) playAudio();
+        });
+
+        stopBtn.addEventListener('click', stopAudio);
+
+        // Update value displays
+        speedSlider.addEventListener('input', (e) => {
+            document.getElementById('speedValue').textContent = `${e.target.value}x`;
+            if (isPlaying && sourceNode) {
+                sourceNode.playbackRate.value = parseFloat(e.target.value);
+            }
+        });
+
+        pitchSlider.addEventListener('input', (e) => {
+            const value = e.target.value;
+            document.getElementById('pitchValue').textContent = value > 0 ? `+${value}` : value;
+            if (isPlaying && sourceNode) {
+                sourceNode.detune.value = parseInt(value) * 100;
+            }
+        });
+
+        bassSlider.addEventListener('input', (e) => {
+            document.getElementById('bassValue').textContent = `${e.target.value} dB`;
+            if (isPlaying && bassNode) {
+                bassNode.gain.value = parseFloat(e.target.value);
+            }
+        });
+
+        reverbSlider.addEventListener('input', (e) => {
+            document.getElementById('reverbValue').textContent = `${e.target.value}%`;
+        });
+
+        echoSlider.addEventListener('input', (e) => {
+            document.getElementById('echoValue').textContent = `${e.target.value}%`;
+            if (isPlaying && feedbackNode) {
+                feedbackNode.gain.value = parseFloat(e.target.value) / 150;
+            }
+        });
+
+        volumeSlider.addEventListener('input', (e) => {
+            document.getElementById('volumeValue').textContent = `${e.target.value}%`;
+            if (isPlaying && gainNode) {
+                gainNode.gain.value = parseFloat(e.target.value) / 100;
+            }
+        });
+
+        // Download functionality
+        downloadBtn.addEventListener('click', async () => {
+            if (!audioBuffer) return;
+
+            // Create offline context for rendering
+            const offlineContext = new OfflineAudioContext(
+                audioBuffer.numberOfChannels,
+                audioBuffer.length * speedSlider.value,
+                audioBuffer.sampleRate
+            );
+
+            const offlineSource = offlineContext.createBufferSource();
+            offlineSource.buffer = audioBuffer;
+            offlineSource.playbackRate.value = parseFloat(speedSlider.value);
+            offlineSource.detune.value = parseInt(pitchSlider.value) * 100;
+
+            const offlineBass = offlineContext.createBiquadFilter();
+            offlineBass.type = 'lowshelf';
+            offlineBass.frequency.value = 200;
+            offlineBass.gain.value = parseFloat(bassSlider.value);
+
+            const offlineGain = offlineContext.createGain();
+            offlineGain.gain.value = parseFloat(volumeSlider.value) / 100;
+
+            offlineSource.connect(offlineBass);
+            offlineBass.connect(offlineGain);
+            offlineGain.connect(offlineContext.destination);
+
+            offlineSource.start();
+
+            const renderedBuffer = await offlineContext.startRendering();
+
+            // Convert to WAV
+            const wav = audioBufferToWav(renderedBuffer);
+            const blob = new Blob([wav], { type: 'audio/wav' });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'processed_audio.wav';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        function audioBufferToWav(buffer) {
+            const numOfChan = buffer.numberOfChannels;
+            const length = buffer.length * numOfChan * 2 + 44;
+            const arrayBuffer = new ArrayBuffer(length);
+            const view = new DataView(arrayBuffer);
+            const channels = [];
+            let offset = 0;
+            let pos = 0;
+
+            function setUint16(data) {
+                view.setUint16(pos, data, true);
+                pos += 2;
+            }
+
+            function setUint32(data) {
+                view.setUint32(pos, data, true);
+                pos += 4;
+            }
+
+            // Write WAV header
+            setUint32(0x46464952); // "RIFF"
+            setUint32(length - 8);
+            setUint32(0x45564157); // "WAVE"
+            setUint32(0x20746d66); // "fmt "
+            setUint32(16);
+            setUint16(1);
+            setUint16(numOfChan);
+            setUint32(buffer.sampleRate);
+            setUint32(buffer.sampleRate * 2 * numOfChan);
+            setUint16(numOfChan * 2);
+            setUint16(16);
+            setUint32(0x61746164); // "data"
+            setUint32(length - pos - 4);
+
+            for (let i = 0; i < buffer.numberOfChannels; i++) {
+                channels.push(buffer.getChannelData(i));
+            }
+
+            while (pos < length) {
+                for (let i = 0; i < numOfChan; i++) {
+                    let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+                    view.setInt16(pos, sample, true);
+                    pos += 2;
+                }
+                offset++;
+            }
+
+            return arrayBuffer;
+        }
+    </script>
+</body>
+</html>
