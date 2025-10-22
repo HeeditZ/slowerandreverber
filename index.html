@@ -390,8 +390,9 @@ without explicit written permission from the owner.
         let isPlaying = false;
         let gainNode, bassNode, convolverNode, delayNode, feedbackNode;
         let startTime = 0;
-        let pauseTime = 0;
+        let pausedAt = 0;
         let animationFrame;
+        let originalFileName = '';
 
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -465,15 +466,21 @@ without explicit written permission from the owner.
         function updateProgress() {
             if (!isPlaying || !audioBuffer) return;
             
-            const elapsed = audioContext.currentTime - startTime;
-            const duration = audioBuffer.duration / parseFloat(speedSlider.value);
-            const progress = (elapsed / duration) * 100;
+            const currentPlayTime = audioContext.currentTime - startTime + pausedAt;
+            const duration = audioBuffer.duration;
+            const progress = (currentPlayTime / duration) * 100;
             
             progressFill.style.width = `${Math.min(progress, 100)}%`;
-            currentTimeDisplay.textContent = formatTime(elapsed);
+            currentTimeDisplay.textContent = formatTime(currentPlayTime);
             
             if (progress < 100) {
                 animationFrame = requestAnimationFrame(updateProgress);
+            } else {
+                isPlaying = false;
+                playBtn.textContent = '▶️';
+                pausedAt = 0;
+                progressFill.style.width = '0%';
+                currentTimeDisplay.textContent = '0:00';
             }
         }
 
@@ -481,14 +488,18 @@ without explicit written permission from the owner.
             if (!audioBuffer) return;
             const rect = progressBar.getBoundingClientRect();
             const percent = (e.clientX - rect.left) / rect.width;
-            const newTime = percent * audioBuffer.duration;
+            pausedAt = percent * audioBuffer.duration;
             
+            const wasPlaying = isPlaying;
             if (isPlaying) {
                 stopAudio();
-                pauseTime = newTime;
+            }
+            
+            progressFill.style.width = `${percent * 100}%`;
+            currentTimeDisplay.textContent = formatTime(pausedAt);
+            
+            if (wasPlaying) {
                 playAudio();
-            } else {
-                pauseTime = newTime;
             }
         });
 
@@ -555,19 +566,21 @@ without explicit written permission from the owner.
             echoGain.connect(gainNode);
             gainNode.connect(audioContext.destination);
 
-            startTime = audioContext.currentTime - pauseTime;
-            sourceNode.start(0, pauseTime);
+            startTime = audioContext.currentTime;
+            sourceNode.start(0, pausedAt);
             isPlaying = true;
             playBtn.textContent = '⏸️';
 
             updateProgress();
 
             sourceNode.onended = () => {
-                isPlaying = false;
-                playBtn.textContent = '▶️';
-                pauseTime = 0;
-                progressFill.style.width = '0%';
-                currentTimeDisplay.textContent = '0:00';
+                if (isPlaying) {
+                    isPlaying = false;
+                    playBtn.textContent = '▶️';
+                    pausedAt = 0;
+                    progressFill.style.width = '0%';
+                    currentTimeDisplay.textContent = '0:00';
+                }
             };
         }
 
@@ -596,7 +609,8 @@ without explicit written permission from the owner.
         playBtn.addEventListener('click', () => {
             if (audioBuffer) {
                 if (isPlaying) {
-                    pauseTime = audioContext.currentTime - startTime;
+                    const currentPlayTime = audioContext.currentTime - startTime + pausedAt;
+                    pausedAt = currentPlayTime;
                     stopAudio();
                 } else {
                     playAudio();
@@ -606,30 +620,45 @@ without explicit written permission from the owner.
 
         stopBtn.addEventListener('click', () => {
             stopAudio();
-            pauseTime = 0;
+            pausedAt = 0;
             progressFill.style.width = '0%';
             currentTimeDisplay.textContent = '0:00';
         });
 
         rewindBtn.addEventListener('click', () => {
             if (!audioBuffer) return;
-            pauseTime = Math.max(0, pauseTime - 5);
+            pausedAt = Math.max(0, pausedAt - 5);
+            
+            const wasPlaying = isPlaying;
             if (isPlaying) {
                 stopAudio();
+            }
+            
+            progressFill.style.width = `${(pausedAt / audioBuffer.duration) * 100}%`;
+            currentTimeDisplay.textContent = formatTime(pausedAt);
+            
+            if (wasPlaying) {
                 playAudio();
             }
         });
 
         forwardBtn.addEventListener('click', () => {
             if (!audioBuffer) return;
-            pauseTime = Math.min(audioBuffer.duration, pauseTime + 5);
+            pausedAt = Math.min(audioBuffer.duration, pausedAt + 5);
+            
+            const wasPlaying = isPlaying;
             if (isPlaying) {
                 stopAudio();
+            }
+            
+            progressFill.style.width = `${(pausedAt / audioBuffer.duration) * 100}%`;
+            currentTimeDisplay.textContent = formatTime(pausedAt);
+            
+            if (wasPlaying) {
                 playAudio();
             }
         });
 
-        // Update value displays
         speedSlider.addEventListener('input', (e) => {
             document.getElementById('speedValue').textContent = `${e.target.value}x`;
             if (isPlaying && sourceNode) {
@@ -750,7 +779,7 @@ without explicit written permission from the owner.
             const sampleRate = buffer.sampleRate;
             const samples = buffer.length;
             
-            const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 128);
+            const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 192);
             const mp3Data = [];
 
             const left = buffer.getChannelData(0);
@@ -763,8 +792,11 @@ without explicit written permission from the owner.
                 const rightChunk = [];
                 
                 for (let j = 0; j < sampleBlockSize && i + j < samples; j++) {
-                    leftChunk[j] = left[i + j] * 32767.5;
-                    rightChunk[j] = right[i + j] * 32767.5;
+                    let leftSample = Math.max(-1, Math.min(1, left[i + j]));
+                    let rightSample = Math.max(-1, Math.min(1, right[i + j]));
+                    
+                    leftChunk[j] = leftSample * 32767;
+                    rightChunk[j] = rightSample * 32767;
                 }
                 
                 const mp3buf = mp3encoder.encodeBuffer(
