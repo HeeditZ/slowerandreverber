@@ -604,6 +604,7 @@ without explicit written permission from the owner.
 </head>
 <body>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.0/lame.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
@@ -807,6 +808,7 @@ without explicit written permission from the owner.
 
                     <div class="download-buttons">
                         <button id="extractBtn">🎬 Extract Frames</button>
+                        <button id="downloadAllBtn" style="display: none;">📦 Download All as ZIP</button>
                     </div>
 
                     <div class="extraction-progress" id="extractionProgress">
@@ -1233,6 +1235,7 @@ without explicit written permission from the owner.
         const videoLoadingIndicator = document.getElementById('videoLoadingIndicator');
         const videoErrorMessage = document.getElementById('videoErrorMessage');
         const extractBtn = document.getElementById('extractBtn');
+        const downloadAllBtn = document.getElementById('downloadAllBtn');
         const extractionProgress = document.getElementById('extractionProgress');
         const videoProgressFill = document.getElementById('videoProgressFill');
         const progressText = document.getElementById('progressText');
@@ -1241,6 +1244,7 @@ without explicit written permission from the owner.
         const imageFormat = document.getElementById('imageFormat');
 
         let currentVideo = null;
+        let extractedFrames = []; // Store extracted frames
 
         videoUploadArea.addEventListener('click', () => videoInput.click());
         videoUploadArea.addEventListener('dragover', (e) => { e.preventDefault(); videoUploadArea.classList.add('dragover'); });
@@ -1277,7 +1281,9 @@ without explicit written permission from the owner.
             extractBtn.disabled = true;
             extractBtn.textContent = '⏳ Extracting...';
             framesGrid.innerHTML = '';
+            extractedFrames = []; // Clear previous frames
             extractionProgress.classList.add('active');
+            downloadAllBtn.style.display = 'none';
 
             try {
                 const video = videoPreview;
@@ -1299,6 +1305,15 @@ without explicit written permission from the owner.
                         video.onseeked = () => {
                             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                             const dataUrl = canvas.toDataURL(`image/${format}`);
+                            
+                            // Store frame data
+                            extractedFrames.push({
+                                dataUrl: dataUrl,
+                                name: `frame_${frameCount.toString().padStart(4, '0')}.${format}`,
+                                index: frameCount,
+                                time: time
+                            });
+                            
                             const frameDiv = document.createElement('div');
                             frameDiv.className = 'frame-item';
                             frameDiv.innerHTML = `
@@ -1321,13 +1336,56 @@ without explicit written permission from the owner.
                         };
                     });
                 }
-                alert(`✅ Extracted ${frameCount} frames! Click any frame to download.`);
+                downloadAllBtn.style.display = 'block';
+                alert(`✅ Extracted ${frameCount} frames! Click any frame to download, or use "Download All as ZIP".`);
             } catch (error) {
                 showVideoError('Failed to extract frames');
             }
 
             extractBtn.disabled = false;
             extractBtn.textContent = '🎬 Extract Frames';
+        });
+
+        // Download all frames as ZIP
+        downloadAllBtn.addEventListener('click', async () => {
+            if (extractedFrames.length === 0) return;
+            
+            downloadAllBtn.disabled = true;
+            downloadAllBtn.textContent = '⏳ Creating ZIP...';
+            
+            try {
+                const zip = new JSZip();
+                const folder = zip.folder('frames');
+                
+                // Add each frame to the ZIP
+                for (const frame of extractedFrames) {
+                    // Convert data URL to blob
+                    const base64Data = frame.dataUrl.split(',')[1];
+                    folder.file(frame.name, base64Data, {base64: true});
+                }
+                
+                // Generate ZIP file
+                const content = await zip.generateAsync({
+                    type: 'blob',
+                    compression: 'DEFLATE',
+                    compressionOptions: { level: 6 }
+                });
+                
+                // Download ZIP
+                const url = URL.createObjectURL(content);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${currentVideo.name.replace(/\.[^/.]+$/, '')}_frames.zip`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                alert(`✅ Downloaded ${extractedFrames.length} frames as ZIP!`);
+            } catch (error) {
+                showVideoError('Failed to create ZIP file');
+            }
+            
+            downloadAllBtn.disabled = false;
+            downloadAllBtn.textContent = '📦 Download All as ZIP';
         });
     </script>
 </body>
