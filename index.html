@@ -1205,13 +1205,24 @@ without explicit written permission from the owner.
             if (isPlaying && gainNode) gainNode.gain.value = parseFloat(e.target.value) / 100;
         });
 
-        // Download functions (simplified placeholders - add your full implementation)
+        // Download functions
         downloadWavBtn.addEventListener('click', async () => {
             if (!audioBuffer) return;
             downloadWavBtn.disabled = true;
-            downloadWavBtn.textContent = '⏳ Processing...';
-            // Add your WAV rendering code here
-            alert('WAV download would happen here');
+            downloadWavBtn.textContent = '⏳ Processing WAV...';
+            try {
+                const renderedBuffer = await renderAudio();
+                const wav = audioBufferToWav(renderedBuffer);
+                const blob = new Blob([wav], { type: 'audio/wav' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${originalFileName}_heeditz.github.io_slowerandreverber.wav`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                showError('Failed to render WAV file. Please try again.');
+            }
             downloadWavBtn.disabled = false;
             downloadWavBtn.textContent = '⬇️ Download WAV';
         });
@@ -1219,12 +1230,152 @@ without explicit written permission from the owner.
         downloadMp3Btn.addEventListener('click', async () => {
             if (!audioBuffer) return;
             downloadMp3Btn.disabled = true;
-            downloadMp3Btn.textContent = '⏳ Encoding...';
-            // Add your MP3 encoding code here
-            alert('MP3 download would happen here');
+            downloadMp3Btn.textContent = '⏳ Encoding MP3...';
+            try {
+                const renderedBuffer = await renderAudio();
+                const mp3Data = audioBufferToMp3(renderedBuffer);
+                const blob = new Blob([mp3Data], { type: 'audio/mp3' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${originalFileName}_heeditz.github.io_slowerandreverber.mp3`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                showError('Failed to encode MP3 file. Please try again.');
+            }
             downloadMp3Btn.disabled = false;
             downloadMp3Btn.textContent = '⬇️ Download MP3';
         });
+
+        async function renderAudio() {
+            const speed = parseFloat(speedSlider.value);
+            const pitch = parseInt(pitchSlider.value);
+            const pitchRatio = Math.pow(2, pitch / 12);
+            const combinedRate = speed * pitchRatio;
+            const outputDuration = audioBuffer.duration / combinedRate;
+            const outputLength = Math.ceil(outputDuration * audioBuffer.sampleRate);
+            const offlineContext = new OfflineAudioContext(audioBuffer.numberOfChannels, outputLength, audioBuffer.sampleRate);
+            const offlineSource = offlineContext.createBufferSource();
+            offlineSource.buffer = audioBuffer;
+            offlineSource.playbackRate.value = combinedRate;
+            const offlineBass = offlineContext.createBiquadFilter();
+            offlineBass.type = 'lowshelf';
+            offlineBass.frequency.value = 200;
+            offlineBass.gain.value = parseFloat(bassSlider.value);
+            const reverbAmount = parseFloat(reverbSlider.value) / 100;
+            const offlineReverb = offlineContext.createConvolver();
+            const offlineReverbGain = offlineContext.createGain();
+            offlineReverbGain.gain.value = reverbAmount;
+            const offlineDryGain = offlineContext.createGain();
+            offlineDryGain.gain.value = 1 - reverbAmount * 0.5;
+            if (reverbAmount > 0) {
+                const rate = offlineContext.sampleRate;
+                const length = rate * 2;
+                const impulse = offlineContext.createBuffer(2, length, rate);
+                const left = impulse.getChannelData(0);
+                const right = impulse.getChannelData(1);
+                for (let i = 0; i < length; i++) {
+                    left[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
+                    right[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
+                }
+                offlineReverb.buffer = impulse;
+            }
+            const echoAmount = parseFloat(echoSlider.value);
+            const offlineDelay = offlineContext.createDelay(5.0);
+            offlineDelay.delayTime.value = 0.3;
+            const offlineFeedback = offlineContext.createGain();
+            offlineFeedback.gain.value = Math.min(0.95, echoAmount / 150);
+            const offlineEchoGain = offlineContext.createGain();
+            offlineEchoGain.gain.value = echoAmount / 100;
+            const offlineGain = offlineContext.createGain();
+            const volumeMultiplier = parseFloat(volumeSlider.value) / 100;
+            const bassMultiplier = 1 + (parseFloat(bassSlider.value) / 40);
+            const normalizedGain = volumeMultiplier / bassMultiplier;
+            offlineGain.gain.value = Math.min(normalizedGain, 1.0);
+            offlineSource.connect(offlineBass);
+            offlineBass.connect(offlineDryGain);
+            offlineDryGain.connect(offlineGain);
+            if (reverbAmount > 0) {
+                offlineBass.connect(offlineReverb);
+                offlineReverb.connect(offlineReverbGain);
+                offlineReverbGain.connect(offlineGain);
+            }
+            if (echoAmount > 0) {
+                offlineBass.connect(offlineDelay);
+                offlineDelay.connect(offlineFeedback);
+                offlineFeedback.connect(offlineDelay);
+                offlineDelay.connect(offlineEchoGain);
+                offlineEchoGain.connect(offlineGain);
+            }
+            offlineGain.connect(offlineContext.destination);
+            offlineSource.start();
+            return await offlineContext.startRendering();
+        }
+
+        function audioBufferToMp3(buffer) {
+            const channels = buffer.numberOfChannels;
+            const sampleRate = buffer.sampleRate;
+            const samples = buffer.length;
+            const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 192);
+            const mp3Data = [];
+            const left = buffer.getChannelData(0);
+            const right = channels > 1 ? buffer.getChannelData(1) : left;
+            const sampleBlockSize = 1152;
+            for (let i = 0; i < samples; i += sampleBlockSize) {
+                const leftChunk = [];
+                const rightChunk = [];
+                for (let j = 0; j < sampleBlockSize && i + j < samples; j++) {
+                    let leftSample = Math.max(-1, Math.min(1, left[i + j]));
+                    let rightSample = Math.max(-1, Math.min(1, right[i + j]));
+                    leftChunk[j] = leftSample * 32767;
+                    rightChunk[j] = rightSample * 32767;
+                }
+                const mp3buf = channels > 1 ? mp3encoder.encodeBuffer(new Int16Array(leftChunk), new Int16Array(rightChunk)) : mp3encoder.encodeBuffer(new Int16Array(leftChunk));
+                if (mp3buf.length > 0) mp3Data.push(mp3buf);
+            }
+            const mp3buf = mp3encoder.flush();
+            if (mp3buf.length > 0) mp3Data.push(mp3buf);
+            return new Blob(mp3Data, { type: 'audio/mp3' });
+        }
+
+        function audioBufferToWav(buffer) {
+            const numOfChan = buffer.numberOfChannels;
+            const length = buffer.length * numOfChan * 2 + 44;
+            const arrayBuffer = new ArrayBuffer(length);
+            const view = new DataView(arrayBuffer);
+            const channels = [];
+            let offset = 0;
+            let pos = 0;
+            function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
+            function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
+            setUint32(0x46464952);
+            setUint32(length - 8);
+            setUint32(0x45564157);
+            setUint32(0x20746d66);
+            setUint32(16);
+            setUint16(1);
+            setUint16(numOfChan);
+            setUint32(buffer.sampleRate);
+            setUint32(buffer.sampleRate * 2 * numOfChan);
+            setUint16(numOfChan * 2);
+            setUint16(16);
+            setUint32(0x61746164);
+            setUint32(length - pos - 4);
+            for (let i = 0; i < buffer.numberOfChannels; i++) {
+                channels.push(buffer.getChannelData(i));
+            }
+            while (pos < length) {
+                for (let i = 0; i < numOfChan; i++) {
+                    let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+                    view.setInt16(pos, sample, true);
+                    pos += 2;
+                }
+                offset++;
+            }
+            return arrayBuffer;
+        }
 
         // ===== FRAME EXTRACTOR =====
         const videoUploadArea = document.getElementById('videoUploadArea');
